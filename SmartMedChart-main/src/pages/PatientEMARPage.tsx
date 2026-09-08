@@ -248,7 +248,7 @@ export default function PatientEMARPage() {
 
         {/* Scheduled Medications */}
         <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', background: 'rgba(10,15,26,0.5)' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', background: '#f8fafc' }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>
               📋 Scheduled Medications (Routine & STAT Scheduled)
             </span>
