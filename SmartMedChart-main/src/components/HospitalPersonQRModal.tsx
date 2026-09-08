@@ -67,7 +67,10 @@ export function HospitalPersonQRModal({ isOpen, onClose, person }: HospitalPerso
   // Build direct scannable verification URL so smartphone cameras immediately open the live hospital record
   const targetId = isPatient ? (person.mrn || person.id || '94021-08') : (person.staffId || person.id || 'DOC-4401');
   const targetType = isPatient ? 'PATIENT' : (person.role || 'STAFF');
-  const verificationUrl = `${window.location.origin}/verify?id=${encodeURIComponent(targetId)}&type=${targetType}`;
+  const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const host = isLocal ? `10.17.114.233:${window.location.port || '5173'}` : window.location.host;
+  const proto = window.location.protocol || 'http:';
+  const verificationUrl = `${proto}//${host}/verify?id=${encodeURIComponent(targetId)}&type=${targetType}`;
   const qrPayload = verificationUrl;
 
   const handleCopy = () => {

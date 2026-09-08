@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, PatientStatus, PrescriptionStatus, ScheduleStatus, AlertSeverity, AlertType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { createHmac } from 'crypto';
 
@@ -67,11 +67,11 @@ async function main() {
   // ═══════════════ USERS & HOSPITAL PERSONNEL ═══════════════
   const passwordHash = await bcrypt.hash('SmartMed@2024', 12);
 
-  // 1. Dr. Rohit Verma, MD — Lead Hospital Administrator
+  // 1. Dr. Evelyn Vance, MD — Lead Hospital Administrator
   const adminVance = await prisma.user.create({
     data: {
-      email: 'rohit.verma@metrohealth.org',
-      name: 'Dr. Rohit Verma, MD',
+      email: 'evelyn.vance@metrohealth.org',
+      name: 'Dr. Evelyn Vance, MD',
       role: 'ADMIN',
       passwordHash,
       staffId: 'ADM-9001',
@@ -82,15 +82,15 @@ async function main() {
       licenseNumber: 'MD-ADM-9001',
       shiftType: 'MORNING',
       onDuty: true,
-      avatarUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+      avatarUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
     },
   });
 
-  // 2. Manashvi Dok, MBA — Director of Hospital Operations
+  // 2. Arthur Hastings, MBA — Director of Hospital Operations
   const adminHastings = await prisma.user.create({
     data: {
-      email: 'manashvi.dok@metrohealth.org',
-      name: 'Manashvi Dok, MBA',
+      email: 'arthur.hastings@metrohealth.org',
+      name: 'Arthur Hastings, MBA',
       role: 'ADMIN',
       passwordHash,
       staffId: 'ADM-1002',
@@ -101,7 +101,7 @@ async function main() {
       licenseNumber: 'HOSP-OPS-44102',
       shiftType: 'MORNING',
       onDuty: false,
-      avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+      avatarUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80',
     },
   });
 
@@ -376,7 +376,7 @@ async function main() {
       platelets: 194,
       emergencyContactName: 'Sunita Patil',
       emergencyContactRelation: 'Spouse / Primary Proxy',
-      emergencyContactPhone: '+1 (555) 349-8291',
+      emergencyContactPhone: '+91 94123 45678',
     },
   });
 
@@ -398,35 +398,35 @@ async function main() {
       creatinine: 1.8,
       emergencyContactName: 'Vikram Desai',
       emergencyContactRelation: 'Son',
-      emergencyContactPhone: '+1 (555) 782-9014',
+      emergencyContactPhone: '+91 98234 11204',
     },
   });
 
   const georgeMatthews = await prisma.patient.create({
     data: {
       mrn: '94023-08',
-      name: 'sunita maske',
+      name: 'Rajesh Sharma',
       dob: new Date('1965-11-05'),
-      sex: 'Female',
+      sex: 'Male',
       weight: 89.2,
       wardId: ward4B.id,
       bed: 'ICU-08',
       attendingId: drSharma.id,
-      admissionDiagnosis: 'Post-op Bowel Resection, Anastomotic Leak',
+      admissionDiagnosis: 'Post-op Bowel Resection, Anastomotic Leak Monitoring',
       npoStatus: true,
       codeStatus: 'Full',
       status: 'ACTIVE',
       eGFR: 78,
-      emergencyContactName: 'Sarah Matthews',
+      emergencyContactName: 'Pooja Sharma',
       emergencyContactRelation: 'Spouse',
-      emergencyContactPhone: '+1 (555) 412-6893',
+      emergencyContactPhone: '+91 98112 34567',
     },
   });
 
   const mrsBrown = await prisma.patient.create({
     data: {
       mrn: '94024-03',
-      name: 'Margaret Brown',
+      name: 'Meera Iyer',
       dob: new Date('1942-07-18'),
       sex: 'Female',
       weight: 62.5,
@@ -435,12 +435,12 @@ async function main() {
       attendingId: drChen.id,
       admissionDiagnosis: 'COPD Exacerbation with Respiratory Failure',
       npoStatus: false,
-      codeStatus: 'DNR/DNI',
+      codeStatus: 'Full',
       status: 'ACTIVE',
       eGFR: 35,
-      emergencyContactName: 'David Brown',
+      emergencyContactName: 'Karthik Iyer',
       emergencyContactRelation: 'Son / Power of Attorney',
-      emergencyContactPhone: '+1 (555) 903-2418',
+      emergencyContactPhone: '+91 98401 23456',
     },
   });
 

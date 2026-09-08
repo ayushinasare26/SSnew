@@ -10,14 +10,14 @@ import {
 
 const ADMIN_PRESETS = [
   {
-    name: 'Dr. Rohit Verma, MD',
+    name: 'Dr. Evelyn Vance, MD',
     role: 'Chief Medical Officer / Lead Admin',
     adminId: 'ADM-9001',
     pin: '9999',
     department: 'Executive Medical Leadership',
   },
   {
-    name: 'Manashvi Dok, MBA',
+    name: 'Arthur Hastings, MBA',
     role: 'Director of Hospital Operations',
     adminId: 'ADM-1002',
     pin: '1234',
@@ -35,8 +35,8 @@ const CLINICAL_PRESETS = [
 const PATIENT_PRESETS = [
   { name: 'Rahul Patil', mrn: '94021-08', bed: 'Bed ICU-12', diagnosis: 'Septic Shock', pin: '1234', initials: 'RP', color: '#0b4da2' },
   { name: 'Anita Desai', mrn: '94022-15', bed: 'Bed ICU-14', diagnosis: 'Type 2 Diabetes', pin: '1234', initials: 'AD', color: '#0284c7' },
-  { name: 'sunita maske', mrn: '94023-08', bed: 'Bed ICU-08', diagnosis: 'Post-op Bowel Resection', pin: '1234', initials: 'GM', color: '#0d9488' },
-  { name: 'Margaret Brown', mrn: '94024-03', bed: 'Bed ICU-03', diagnosis: 'COPD Exacerbation', pin: '1234', initials: 'MB', color: '#7c3aed' },
+  { name: 'Rajesh Sharma', mrn: '94023-08', bed: 'Bed ICU-08', diagnosis: 'Post-op Bowel Resection', pin: '1234', initials: 'RS', color: '#0d9488' },
+  { name: 'Meera Iyer', mrn: '94024-03', bed: 'Bed ICU-03', diagnosis: 'COPD Exacerbation', pin: '1234', initials: 'MI', color: '#7c3aed' },
 ];
 
 export default function LoginPage() {
