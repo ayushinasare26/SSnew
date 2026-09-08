@@ -21,9 +21,17 @@ interface ScannedQRDetails {
 
 export default function BedsideScannerPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [scannedPatientId, setScannedPatientId] = useState<string | null>(searchParams.get('patientId'));
-  const [scheduleId, setScheduleId] = useState<string | null>(searchParams.get('scheduleId'));
+
+  // Target IDs passed from Nurse Dashboard / eMAR
+  const urlPatientId = searchParams.get('patientId');
+  const urlScheduleId = searchParams.get('scheduleId');
+
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(urlPatientId);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(urlScheduleId);
+
+  // Scanner state
   const [isScanning, setIsScanning] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -33,7 +41,11 @@ export default function BedsideScannerPage() {
   const [administered, setAdministered] = useState(false);
   const [scanStatusText, setScanStatusText] = useState('Position QR code inside viewfinder');
   const [fiveRights, setFiveRights] = useState({
-    rightPatient: false, rightDrug: false, rightDose: false, rightRoute: false, rightTime: false,
+    rightPatient: false,
+    rightDrug: false,
+    rightDose: false,
+    rightRoute: false,
+    rightTime: false,
   });
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -48,22 +60,37 @@ export default function BedsideScannerPage() {
     queryFn: () => patientService.getAll({ status: 'ACTIVE' }),
   });
 
+  // Fetch target patient if we have selectedPatientId
   const { data: patient } = useQuery({
-    queryKey: ['patient', scannedPatientId],
-    queryFn: () => patientService.getById(scannedPatientId!),
-    enabled: !!scannedPatientId,
+    queryKey: ['patient', selectedPatientId],
+    queryFn: () => patientService.getById(selectedPatientId!),
+    enabled: !!selectedPatientId,
   });
 
+  // Fetch schedules for the patient
   const { data: schedules = [] } = useQuery({
-    queryKey: ['patient-schedules-scan', scannedPatientId],
-    queryFn: () => scheduleService.getAll({ patientId: scannedPatientId! }),
-    enabled: !!scannedPatientId,
+    queryKey: ['patient-schedules-scan', selectedPatientId],
+    queryFn: () => scheduleService.getAll({ patientId: selectedPatientId! }),
+    enabled: !!selectedPatientId,
   });
+
+  // If we only have scheduleId but no patientId, find the patient from the schedule
+  useEffect(() => {
+    if (!selectedPatientId && selectedScheduleId && (patients as any[]).length > 0) {
+      // Find patient across all active patients if possible
+      for (const p of patients as any[]) {
+        if (p.prescriptions?.some((pr: any) => pr.schedules?.some((s: any) => s.id === selectedScheduleId))) {
+          setSelectedPatientId(p.id);
+          break;
+        }
+      }
+    }
+  }, [selectedPatientId, selectedScheduleId, patients]);
 
   const activeRx = (patient?.prescriptions as any[])?.find((r: any) => ['ACTIVE', 'STAT'].includes(r.status)) || patient?.prescriptions?.[0];
 
-  const selectedSchedule = scheduleId
-    ? (schedules as any[]).find(s => s.id === scheduleId)
+  const selectedSchedule = selectedScheduleId
+    ? (schedules as any[]).find(s => s.id === selectedScheduleId)
     : ((schedules as any[]).find(s => s.status === 'PENDING') || (schedules as any[])[0] || (activeRx ? {
         id: activeRx.schedules?.[0]?.id || `rx-auto-${activeRx.id}`,
         prescription: activeRx,
@@ -375,7 +402,7 @@ export default function BedsideScannerPage() {
   const administerMutation = useMutation({
     mutationFn: () => scheduleService.administer({
       scheduleId: selectedSchedule?.id,
-      patientId: scannedPatientId,
+      patientId: selectedPatientId,
       dose: selectedSchedule?.prescription?.dose || selectedSchedule?.dose || 1,
       unit: selectedSchedule?.prescription?.unit || selectedSchedule?.doseUnit || 'mg',
       route: selectedSchedule?.prescription?.route || selectedSchedule?.route || 'IV',
@@ -384,6 +411,7 @@ export default function BedsideScannerPage() {
     }),
     onSuccess: () => {
       setAdministered(true);
+      playSuccessSound();
       queryClient.invalidateQueries({ queryKey: ['patient-schedules-scan'] });
       queryClient.invalidateQueries({ queryKey: ['ward-schedules'] });
       queryClient.invalidateQueries({ queryKey: ['patient-my-record'] });
@@ -396,8 +424,8 @@ export default function BedsideScannerPage() {
       try {
         const payload = JSON.stringify({
           timestamp: Date.now(),
-          patientId: scannedPatientId,
-          patientName: patient?.name,
+          patientId: selectedPatientId,
+          patientName: targetPatient?.name,
           medication: selectedSchedule?.prescription?.medicationName || activeRx?.medicationName,
           administeredAt: new Date().toISOString(),
         });
@@ -412,7 +440,111 @@ export default function BedsideScannerPage() {
     }
   });
 
-  const simulateScan = async () => {
+  // Core Barcode / QR verification engine
+  const processBarcodeScan = (rawCode: string) => {
+    const raw = rawCode.trim();
+    if (!raw) return;
+
+    // Reset previous feedback
+    setWrongScanData(null);
+    setScanSuccessMessage(null);
+
+    // Extract identifier from raw scan (URL param, JSON, or direct text)
+    let extractedId = raw;
+    try {
+      if (raw.includes('?id=')) {
+        const url = new URL(raw.startsWith('http') ? raw : `http://localhost${raw}`);
+        extractedId = url.searchParams.get('id') || raw;
+      } else if (raw.startsWith('{')) {
+        const parsed = JSON.parse(raw);
+        extractedId = parsed.mrn || parsed.id || parsed.patientId || raw;
+      }
+    } catch {
+      // fallback to raw
+    }
+
+    // Lookup scanned identity in active patients
+    const matchedPatient = (patients as any[]).find((p: any) =>
+      p.id === extractedId ||
+      p.mrn?.toLowerCase() === extractedId.toLowerCase() ||
+      p.name?.toLowerCase() === extractedId.toLowerCase() ||
+      (p.bed && p.bed.toLowerCase() === extractedId.toLowerCase()) ||
+      (p.mrn && raw.toLowerCase().includes(p.mrn.toLowerCase())) ||
+      (p.name && raw.toLowerCase().includes(p.name.toLowerCase()))
+    );
+
+    if (hasTargetPatient && targetPatient) {
+      // Locked Patient Mode: MUST match the expected target patient
+      const isMatch = matchedPatient
+        ? matchedPatient.id === targetPatient.id
+        : (extractedId === targetPatient.id ||
+           extractedId.toLowerCase() === targetPatient.mrn?.toLowerCase() ||
+           extractedId.toLowerCase() === targetPatient.name?.toLowerCase());
+
+      if (isMatch) {
+        // MATCH: Verification Succeeded
+        setIsVerified(true);
+        setWrongScanData(null);
+        setScanSuccessMessage(`Patient Identity Confirmed: ${targetPatient.name} (MRN: ${targetPatient.mrn}, Bed ${targetPatient.bed})`);
+        setFiveRights({
+          rightPatient: true,
+          rightDrug: true,
+          rightDose: true,
+          rightRoute: true,
+          rightTime: true,
+        });
+        playSuccessSound();
+      } else {
+        // MISMATCH: Wrong patient scanned!
+        setIsVerified(false);
+        setFiveRights(prev => ({ ...prev, rightPatient: false }));
+        playErrorBuzzer();
+
+        setWrongScanData({
+          scannedName: matchedPatient ? matchedPatient.name : `Unrecognized Barcode ("${raw}")`,
+          scannedBed: matchedPatient ? matchedPatient.bed : '—',
+          scannedMrn: matchedPatient ? matchedPatient.mrn : raw,
+          expectedName: targetPatient.name,
+          expectedBed: targetPatient.bed,
+          expectedMrn: targetPatient.mrn,
+          rawCode: raw,
+        });
+      }
+    } else {
+      // General Mode (no patient pre-selected)
+      if (matchedPatient) {
+        setSelectedPatientId(matchedPatient.id);
+        setIsVerified(true);
+        setWrongScanData(null);
+        setScanSuccessMessage(`Patient Identity Confirmed: ${matchedPatient.name} (MRN: ${matchedPatient.mrn}, Bed ${matchedPatient.bed})`);
+        setFiveRights({
+          rightPatient: true,
+          rightDrug: true,
+          rightDose: true,
+          rightRoute: true,
+          rightTime: true,
+        });
+        playSuccessSound();
+      } else {
+        setIsVerified(false);
+        playErrorBuzzer();
+        setWrongScanData({
+          scannedName: `Unrecognized Barcode ("${raw}")`,
+          scannedBed: '—',
+          scannedMrn: raw,
+          expectedName: 'Any Active Hospital Patient',
+          expectedBed: 'Active Ward',
+          expectedMrn: 'Valid MRN',
+          rawCode: raw,
+        });
+      }
+    }
+
+    setBarcodeInput('');
+  };
+
+  // Simulation: Scan correct target patient
+  const handleSimulateCorrectScan = async () => {
     setIsScanning(true);
     await new Promise(r => setTimeout(r, 1000));
 
@@ -427,7 +559,7 @@ export default function BedsideScannerPage() {
   };
 
   const allRightsVerified = Object.values(fiveRights).every(Boolean);
-  const dob = patient?.dob ? new Date(patient.dob) : null;
+  const dob = targetPatient?.dob ? new Date(targetPatient.dob) : null;
   const age = dob ? Math.floor((Date.now() - dob.getTime()) / (1000 * 60 * 60 * 24 * 365.25)) : null;
 
   return (
@@ -441,10 +573,16 @@ export default function BedsideScannerPage() {
         <div className="top-bar-section" style={{ color: 'var(--color-accent-blue-light)', fontWeight: 600 }}>
           <span>Metropolitan General Hospital</span>
         </div>
-        <div className="top-bar-section"><span>WARD 4B ICU</span></div>
+        <div className="top-bar-section"><span>WARD 4B ICU · BEDSIDE DISPENSING</span></div>
         <div className="top-bar-section"><Clock size={12} /> Shift 07:00–15:00</div>
         <div style={{ marginLeft: 'auto', padding: '0 16px', display: 'flex', gap: 8 }}>
-          <span className="chip chip-stat"><AlertTriangle size={11} /> 1 STAT MED DUE</span>
+          <button
+            onClick={() => navigate('/nurse')}
+            className="btn-ghost"
+            style={{ fontSize: 12, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          >
+            <ArrowLeft size={13} /> Return to Nurse Dashboard
+          </button>
         </div>
       </div>
 
@@ -875,17 +1013,44 @@ export default function BedsideScannerPage() {
             {/* 2. PATIENT IDENTITY BANNER */}
             {patient && (
               <div style={{
-                background: '#0c1a30',
-                backgroundImage: 'linear-gradient(135deg, #0c1a30 0%, #0e274c 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: 14,
-                padding: '16px 22px',
-                marginBottom: 20,
+                width: 48,
+                height: 48,
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #0b4da2, #0284c7)',
                 display: 'flex',
-                gap: 18,
                 alignItems: 'center',
-                boxShadow: '0 4px 14px rgba(12, 26, 48, 0.15)'
+                justifyContent: 'center',
+                fontSize: 16,
+                fontWeight: 800,
+                color: '#ffffff',
+                flexShrink: 0
               }}>
+                {targetPatient.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 19, fontWeight: 800, color: 'white' }}>{targetPatient.name}</span>
+                  <span style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>ICU WARD 4B</span>
+                  <span style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#ffffff', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace', fontWeight: 700 }}>Bed {targetPatient.bed}</span>
+                  <span style={{ background: 'rgba(59, 130, 246, 0.25)', color: '#93c5fd', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace' }}>MRN: {targetPatient.mrn}</span>
+                  {targetPatient.isolationStatus && (
+                    <span style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>ISOLATION</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                  DOB: {targetPatient.dob ? format(new Date(targetPatient.dob), 'dd-MMM-yyyy') : '—'} ({age}y) · Sex: {targetPatient.sex} · Weight: {targetPatient.weight}kg · Attending: Dr. Rohit Verma, MD (Pulmonology/CC)
+                </div>
+
+                {targetPatient.allergies?.length > 0 && (
+                  <div className="alert-critical" style={{ marginTop: 8, padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={13} />
+                    <span><strong>SEVERE ADVERSE ALLERGY:</strong> {targetPatient.allergies[0].allergen} — Anaphylaxis & Cephalosporin Cross-Reactivity Verified {targetPatient.allergies[0].verifiedAt ? new Date(targetPatient.allergies[0].verifiedAt).getFullYear() : ''}. <strong>Severity: High (Level 1)</strong></span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
                 <div style={{
                   width: 48,
                   height: 48,
@@ -898,7 +1063,8 @@ export default function BedsideScannerPage() {
                   fontWeight: 800,
                   color: '#ffffff'
                 }}>
-                  {patient.name.split(' ').map((w: string) => w[0]).join('')}
+                  {isVerified ? <Check size={12} /> : <AlertTriangle size={12} />}
+                  {isVerified ? 'PATIENT VERIFIED' : 'AWAITING SCAN'}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -915,7 +1081,45 @@ export default function BedsideScannerPage() {
                     <div className="alert-critical" style={{ marginTop: 8, padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <AlertTriangle size={12} /> <strong>SEVERE ALLERGY:</strong> {patient.allergies.map((a: any) => a.allergen).join(', ')} Allergy Verified. <strong>High Risk (Level 1)</strong>
                     </div>
-                  )}
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>
+                      {wrongScanData.scannedName}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>
+                      Bed: <strong style={{ color: '#dc2626' }}>{wrongScanData.scannedBed}</strong> · MRN: <strong style={{ color: '#dc2626' }}>{wrongScanData.scannedMrn}</strong>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 11, color: '#dc2626', fontWeight: 600 }}>
+                      ❌ FAILED: 1st Right (Right Patient)
+                    </div>
+                  </div>
+
+                  {/* Expected Card (Green/Blue) */}
+                  <div style={{ background: '#ffffff', border: '1.5px solid #0b4da2', borderRadius: 8, padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0b4da2', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', marginBottom: 8 }}>
+                      <CheckCircle2 size={14} /> Prescribed Target Patient (Expected)
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>
+                      {wrongScanData.expectedName}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>
+                      Bed: <strong style={{ color: '#0b4da2' }}>Bed {wrongScanData.expectedBed}</strong> · MRN: <strong style={{ color: '#0b4da2' }}>{wrongScanData.expectedMrn}</strong>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 11, color: '#0b4da2', fontWeight: 600 }}>
+                      🎯 Target for: {selectedSchedule?.prescription?.medicationName || activeRx?.medicationName || 'Medication'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(220, 38, 38, 0.08)', padding: '10px 14px', borderRadius: 8 }}>
+                  <span style={{ fontSize: 12, color: '#991b1b', fontWeight: 600 }}>
+                    Please verify the physical patient bed and wristband QR before re-attempting scan.
+                  </span>
+                  <button
+                    onClick={handleResetScan}
+                    className="btn-primary"
+                    style={{ background: '#dc2626', borderColor: '#b91c1c', fontSize: 12, padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <RefreshCw size={13} /> Clear Alert &amp; Re-Scan Wristband
+                  </button>
                 </div>
                 <button
                   onClick={() => {
@@ -968,8 +1172,18 @@ export default function BedsideScannerPage() {
                           {verified ? '✓ ' : ''}{value}
                         </div>
                       </div>
-                    );
-                  })}
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                        {scanSuccessMessage || `Confirmed: ${targetPatient.name} (MRN: ${targetPatient.mrn}, Bed ${targetPatient.bed})`} · Bedside 4-Point Match Confirmed
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleResetScan}
+                    className="btn-ghost"
+                    style={{ fontSize: 11, padding: '4px 10px' }}
+                  >
+                    Rescan
+                  </button>
                 </div>
 
                 {/* Administer Button */}
@@ -996,9 +1210,6 @@ export default function BedsideScannerPage() {
                       eMAR updated · 5-Rights Verified · Cryptographic audit trail recorded
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
 
             {/* 4. PENDING SCHEDULES */}
             {(schedules as any[]).filter(s => s.status === 'PENDING').length > 0 && (
@@ -1013,14 +1224,131 @@ export default function BedsideScannerPage() {
                       <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
                         {s.prescription?.dose}{s.prescription?.unit} · {s.prescription?.route} · Due: {s.scheduledTime ? format(new Date(s.scheduledTime), 'HH:mm') : '—'}
                       </div>
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '20px', background: 'var(--color-given-green-bg)', border: '1.5px solid var(--color-given-green-border)', borderRadius: 10 }}>
+                        <CheckCircle2 size={36} color="var(--color-given-green)" style={{ margin: '0 auto 10px', display: 'block' }} />
+                        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--color-given-green)' }}>
+                          Medication Successfully Administered &amp; Recorded
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4, marginBottom: 16 }}>
+                          eMAR updated · 5-Rights Verified · Cryptographic audit trail stamped · HL7 Broadcast Dispatched
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                          <button
+                            onClick={() => navigate('/nurse')}
+                            className="btn-primary"
+                            style={{ fontSize: 13, padding: '8px 20px' }}
+                          >
+                            <ArrowLeft size={14} /> Back to Nurse Dashboard
+                          </button>
+                          <button
+                            onClick={() => navigate(`/patients/${targetPatient.id}`)}
+                            className="btn-ghost"
+                            style={{ fontSize: 13, padding: '8px 18px' }}
+                          >
+                            <User size={14} /> View Patient eMAR Chart
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Remaining Pending Medications for Target Patient */}
+                {(schedules as any[]).filter(s => s.status === 'PENDING' && s.id !== selectedSchedule?.id).length > 0 && (
+                  <div className="card">
+                    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)' }}>
+                      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>
+                        Other Pending Medications for {targetPatient.name}
+                      </h3>
                     </div>
                     <button onClick={() => setScheduleId(s.id)} className="btn-primary" style={{ fontSize: 11 }}>
                       Select &amp; Administer
                     </button>
                   </div>
-                ))}
+                )}
               </div>
             )}
+          </div>
+        ) : (
+          /* ═══════════════ GENERAL STANDALONE SCANNER MODE (NO PRE-SELECTED PATIENT) ═══════════════ */
+          <div>
+            <div className="card" style={{ padding: 28, textAlign: 'center' }}>
+              <div style={{ marginBottom: 20 }}>
+                <CameraQRScanner
+                  onScanSuccess={(scannedCode) => {
+                    processBarcodeScan(scannedCode);
+                  }}
+                  autoStart={true}
+                />
+              </div>
+
+              <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                {isScanning ? 'Scanning Wristband...' : 'Ready to Scan Patient Wristband'}
+              </h2>
+              <p style={{ margin: '0 0 20px', color: 'var(--color-text-muted)', fontSize: 13 }}>
+                Point your camera at any active patient wristband QR code to begin bedside dispensing.
+              </p>
+
+              {/* Barcode Form */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (barcodeInput.trim()) {
+                    processBarcodeScan(barcodeInput);
+                  }
+                }}
+                style={{ maxWidth: 440, margin: '0 auto 24px', display: 'flex', gap: 8 }}
+              >
+                <input
+                  ref={barcodeInputRef}
+                  type="text"
+                  value={barcodeInput}
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  placeholder="Type or scan patient MRN (e.g. MRN-2024-004)"
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: '1px solid var(--color-border)',
+                    fontSize: 13,
+                    background: 'var(--color-bg-primary)',
+                    color: 'var(--color-text-primary)',
+                    outline: 'none'
+                  }}
+                />
+                <button type="submit" className="btn-primary" style={{ fontSize: 12, padding: '0 18px' }}>
+                  Scan &amp; Open
+                </button>
+              </form>
+
+              {/* Simulation */}
+              <button onClick={handleSimulateCorrectScan} disabled={isScanning} className="btn-primary" style={{ fontSize: 14, padding: '12px 32px' }}>
+                <Scan size={16} /> {isScanning ? 'Scanning...' : 'Simulate Wristband Scan'}
+              </button>
+
+              {/* Fallback manual selector only shown when NO target patient is pre-selected */}
+              <div style={{ marginTop: 28, borderTop: '1px solid var(--color-border)', paddingTop: 20 }}>
+                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>Or choose a patient to begin administration:</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+                  {(patients as any[]).map((p: any) => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        setSelectedPatientId(p.id);
+                        setIsVerified(false);
+                        setWrongScanData(null);
+                      }}
+                      className="btn-ghost"
+                      style={{ flexDirection: 'column', padding: '10px', height: 'auto', textAlign: 'center' }}
+                    >
+                      <span style={{ fontWeight: 600, fontSize: 12 }}>{p.name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Bed {p.bed} · {p.mrn}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

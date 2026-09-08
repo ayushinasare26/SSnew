@@ -14,6 +14,7 @@ import { useAuth } from '../hooks/useAuth';
 export default function PatientsListPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [selectedPatientForQR, setSelectedPatientForQR] = useState<HospitalPerson | null>(null);
   const [selectedCaseFileId, setSelectedCaseFileId] = useState<string | null>(null);
