@@ -1,0 +1,8 @@
+{
+  "name": "shridha-smartmedchart",
+  "version": "2.4.1",
+  "private": true,
+  "scripts": {
+    "build": "cd SmartMedChart-main && npm install && npm run build"
+  }
+}

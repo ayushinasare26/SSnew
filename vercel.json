@@ -1,0 +1,10 @@
+{
+  "buildCommand": "cd SmartMedChart-main && npm install && npm run build",
+  "outputDirectory": "SmartMedChart-main/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
