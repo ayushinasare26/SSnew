@@ -693,3 +693,30 @@
   20%, 60% { transform: translateX(-8px); }
   40%, 80% { transform: translateX(8px); }
 }
+
+@keyframes scanSweep {
+  0% {
+    top: 5%;
+    opacity: 0.2;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    top: 92%;
+    opacity: 0.2;
+  }
+}
+
+@media print {
+  #printable-patient-health-pass {
+    display: block !important;
+    border: 2px solid #000 !important;
+    box-shadow: none !important;
+    margin: 0 auto !important;
+  }
+}
+

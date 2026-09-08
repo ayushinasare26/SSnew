@@ -3,7 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import {
   LayoutDashboard, Users, FileText, Scan, Shield,
   LogOut, ChevronRight, Bell, Activity, BarChart2,
-  Settings, Pill, QrCode
+  Settings, Pill, QrCode, Building2
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { notificationService } from '../services/api.services';
@@ -36,8 +36,15 @@ const NAV_PHARMACIST: Array<{ to: string; label: string; icon: any; badge?: stri
 
 const NAV_ADMIN: Array<{ to: string; label: string; icon: any; badge?: string }> = [
   { to: '/admin', label: 'User Management', icon: Settings },
+  { to: '/receptionist', label: 'Reception & Admissions', icon: Building2, badge: 'Desk' },
   { to: '/patients', label: 'Patients', icon: Users },
   { to: '/safety-audit', label: 'Audit Logs', icon: Shield },
+  { to: '/reports', label: 'Reports', icon: BarChart2 },
+];
+
+const NAV_RECEPTIONIST: Array<{ to: string; label: string; icon: any; badge?: string }> = [
+  { to: '/receptionist', label: 'Reception Desk', icon: Building2 },
+  { to: '/patients', label: 'All Inpatients', icon: Users },
   { to: '/reports', label: 'Reports', icon: BarChart2 },
 ];
 
@@ -57,10 +64,11 @@ export function Sidebar() {
     user?.role === 'DOCTOR' ? NAV_DOCTOR :
     user?.role === 'NURSE' ? NAV_NURSE :
     user?.role === 'PHARMACIST' ? NAV_PHARMACIST :
+    user?.role === 'RECEPTIONIST' ? NAV_RECEPTIONIST :
     NAV_ADMIN;
 
   const roleInitials = (user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const roleColor = user?.role === 'DOCTOR' ? '#3b82f6' : user?.role === 'NURSE' ? '#10b981' : user?.role === 'PHARMACIST' ? '#8b5cf6' : '#f59e0b';
+  const roleColor = user?.role === 'DOCTOR' ? '#3b82f6' : user?.role === 'NURSE' ? '#10b981' : user?.role === 'PHARMACIST' ? '#8b5cf6' : user?.role === 'RECEPTIONIST' ? '#06b6d4' : '#f59e0b';
 
   const [showStaffQRModal, setShowStaffQRModal] = useState(false);
 

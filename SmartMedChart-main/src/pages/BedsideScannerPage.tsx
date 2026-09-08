@@ -4,9 +4,9 @@ import { patientService, scheduleService } from '../services/api.services';
 import {
   Scan, CheckCircle2, AlertTriangle, User, Pill, Hash, MapPin, Clock,
   Loader2, QrCode, Camera, CameraOff, RefreshCw, Upload,
-  Check, Sparkles, HelpCircle, SwitchCamera
+  Check, Sparkles, HelpCircle, SwitchCamera, Activity, ArrowLeft
 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import jsQR from 'jsqr';
 
@@ -29,6 +29,7 @@ export default function BedsideScannerPage() {
   const urlScheduleId = searchParams.get('scheduleId');
 
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(urlPatientId);
+  const [scannedPatientId, setScannedPatientId] = useState<string | null>(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(urlScheduleId);
 
   // Scanner state
@@ -40,6 +41,11 @@ export default function BedsideScannerPage() {
   const [scannedQRDetails, setScannedQRDetails] = useState<ScannedQRDetails | null>(null);
   const [administered, setAdministered] = useState(false);
   const [scanStatusText, setScanStatusText] = useState('Position QR code inside viewfinder');
+  const [wrongScanData, setWrongScanData] = useState<any>(null);
+  const [scanSuccessMessage, setScanSuccessMessage] = useState<string | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const hasTargetPatient = Boolean(selectedPatientId);
   const [fiveRights, setFiveRights] = useState({
     rightPatient: false,
     rightDrug: false,
@@ -60,18 +66,20 @@ export default function BedsideScannerPage() {
     queryFn: () => patientService.getAll({ status: 'ACTIVE' }),
   });
 
-  // Fetch target patient if we have selectedPatientId
+  const effectivePatientId = scannedPatientId || selectedPatientId;
+
+  // Fetch target patient if we have effectivePatientId
   const { data: patient } = useQuery({
-    queryKey: ['patient', selectedPatientId],
-    queryFn: () => patientService.getById(selectedPatientId!),
-    enabled: !!selectedPatientId,
+    queryKey: ['patient', effectivePatientId],
+    queryFn: () => patientService.getById(effectivePatientId!),
+    enabled: !!effectivePatientId,
   });
 
   // Fetch schedules for the patient
   const { data: schedules = [] } = useQuery({
-    queryKey: ['patient-schedules-scan', selectedPatientId],
-    queryFn: () => scheduleService.getAll({ patientId: selectedPatientId! }),
-    enabled: !!selectedPatientId,
+    queryKey: ['patient-schedules-scan', effectivePatientId],
+    queryFn: () => scheduleService.getAll({ patientId: effectivePatientId! }),
+    enabled: !!effectivePatientId,
   });
 
   // If we only have scheduleId but no patientId, find the patient from the schedule
@@ -87,6 +95,7 @@ export default function BedsideScannerPage() {
     }
   }, [selectedPatientId, selectedScheduleId, patients]);
 
+  const targetPatient = patient || (patients as any[]).find((p: any) => p.id === effectivePatientId) || (patients as any[])[0];
   const activeRx = (patient?.prescriptions as any[])?.find((r: any) => ['ACTIVE', 'STAT'].includes(r.status)) || patient?.prescriptions?.[0];
 
   const selectedSchedule = selectedScheduleId
@@ -118,6 +127,26 @@ export default function BedsideScannerPage() {
     } catch {
       // Audio not supported
     }
+  };
+
+  const playSuccessSound = playBeep;
+
+  const playErrorBuzzer = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch {}
   };
 
   // Stop camera helper
@@ -557,6 +586,8 @@ export default function BedsideScannerPage() {
     setIsScanning(false);
     handleDecodedQR(simulatedQR, 'SIMULATION');
   };
+
+  const simulateScan = handleSimulateCorrectScan;
 
   const allRightsVerified = Object.values(fiveRights).every(Boolean);
   const dob = targetPatient?.dob ? new Date(targetPatient.dob) : null;
@@ -1011,46 +1042,18 @@ export default function BedsideScannerPage() {
             )}
 
             {/* 2. PATIENT IDENTITY BANNER */}
-            {patient && (
+            {(patient || targetPatient) && (
               <div style={{
-                width: 48,
-                height: 48,
+                background: '#0c1a30',
                 borderRadius: 12,
-                background: 'linear-gradient(135deg, #0b4da2, #0284c7)',
+                padding: '16px 20px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 16,
-                fontWeight: 800,
-                color: '#ffffff',
-                flexShrink: 0
+                gap: 16,
+                marginBottom: 20,
+                border: '1px solid #1e3a5f',
+                boxShadow: '0 4px 14px rgba(12, 26, 48, 0.15)'
               }}>
-                {targetPatient.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 19, fontWeight: 800, color: 'white' }}>{targetPatient.name}</span>
-                  <span style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>ICU WARD 4B</span>
-                  <span style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#ffffff', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace', fontWeight: 700 }}>Bed {targetPatient.bed}</span>
-                  <span style={{ background: 'rgba(59, 130, 246, 0.25)', color: '#93c5fd', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace' }}>MRN: {targetPatient.mrn}</span>
-                  {targetPatient.isolationStatus && (
-                    <span style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>ISOLATION</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                  DOB: {targetPatient.dob ? format(new Date(targetPatient.dob), 'dd-MMM-yyyy') : '—'} ({age}y) · Sex: {targetPatient.sex} · Weight: {targetPatient.weight}kg · Attending: Dr. Rohit Verma, MD (Pulmonology/CC)
-                </div>
-
-                {targetPatient.allergies?.length > 0 && (
-                  <div className="alert-critical" style={{ marginTop: 8, padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <AlertTriangle size={13} />
-                    <span><strong>SEVERE ADVERSE ALLERGY:</strong> {targetPatient.allergies[0].allergen} — Anaphylaxis & Cephalosporin Cross-Reactivity Verified {targetPatient.allergies[0].verifiedAt ? new Date(targetPatient.allergies[0].verifiedAt).getFullYear() : ''}. <strong>Severity: High (Level 1)</strong></span>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
                 <div style={{
                   width: 48,
                   height: 48,
@@ -1063,63 +1066,24 @@ export default function BedsideScannerPage() {
                   fontWeight: 800,
                   color: '#ffffff'
                 }}>
-                  {isVerified ? <Check size={12} /> : <AlertTriangle size={12} />}
-                  {isVerified ? 'PATIENT VERIFIED' : 'AWAITING SCAN'}
+                  {(patient?.name || targetPatient?.name || 'P').split(' ').map((w: string) => w[0]).join('')}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 18, fontWeight: 800, color: 'white' }}>{patient.name}</span>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: 'white' }}>{patient?.name || targetPatient?.name}</span>
                     <span style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>ICU</span>
-                    <span style={{ background: 'rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace' }}>Bed {patient.bed}</span>
-                    {patient.isolationStatus && <span style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>ISOLATION</span>}
-                    {patient.npoStatus && <span style={{ background: '#fffbeb', color: '#d97706', border: '1px solid #fde68a', fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>NPO</span>}
+                    <span style={{ background: 'rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace' }}>Bed {patient?.bed || targetPatient?.bed}</span>
+                    {(patient?.isolationStatus || targetPatient?.isolationStatus) && <span style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>ISOLATION</span>}
+                    {(patient?.npoStatus || targetPatient?.npoStatus) && <span style={{ background: '#fffbeb', color: '#d97706', border: '1px solid #fde68a', fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 700 }}>NPO</span>}
                   </div>
                   <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                    MRN: <strong style={{ color: 'white', fontFamily: 'monospace' }}>{patient.mrn}</strong> · DOB: {patient.dob ? format(new Date(patient.dob), 'dd-MMM-yyyy') : '—'} ({age}y) · Sex: {patient.sex} · Weight: {patient.weight}kg · Diagnosis: {patient.admissionDiagnosis || 'Acute Care'}
+                    MRN: <strong style={{ color: 'white', fontFamily: 'monospace' }}>{patient?.mrn || targetPatient?.mrn}</strong> · DOB: {(patient?.dob || targetPatient?.dob) ? format(new Date((patient?.dob || targetPatient?.dob)!), 'dd-MMM-yyyy') : '—'} ({age}y) · Sex: {patient?.sex || targetPatient?.sex} · Weight: {patient?.weight || targetPatient?.weight}kg · Diagnosis: {patient?.admissionDiagnosis || targetPatient?.admissionDiagnosis || 'Acute Care'}
                   </div>
-                  {patient.allergies?.length > 0 && (
+                  {(patient?.allergies?.length > 0 || targetPatient?.allergies?.length > 0) && (
                     <div className="alert-critical" style={{ marginTop: 8, padding: '6px 12px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <AlertTriangle size={12} /> <strong>SEVERE ALLERGY:</strong> {patient.allergies.map((a: any) => a.allergen).join(', ')} Allergy Verified. <strong>High Risk (Level 1)</strong>
+                      <AlertTriangle size={12} /> <strong>SEVERE ALLERGY:</strong> {((patient?.allergies || targetPatient?.allergies) as any[])?.map((a: any) => a.allergen).join(', ')} Allergy Verified. <strong>High Risk (Level 1)</strong>
                     </div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>
-                      {wrongScanData.scannedName}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>
-                      Bed: <strong style={{ color: '#dc2626' }}>{wrongScanData.scannedBed}</strong> · MRN: <strong style={{ color: '#dc2626' }}>{wrongScanData.scannedMrn}</strong>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: 11, color: '#dc2626', fontWeight: 600 }}>
-                      ❌ FAILED: 1st Right (Right Patient)
-                    </div>
-                  </div>
-
-                  {/* Expected Card (Green/Blue) */}
-                  <div style={{ background: '#ffffff', border: '1.5px solid #0b4da2', borderRadius: 8, padding: 14 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0b4da2', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', marginBottom: 8 }}>
-                      <CheckCircle2 size={14} /> Prescribed Target Patient (Expected)
-                    </div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>
-                      {wrongScanData.expectedName}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>
-                      Bed: <strong style={{ color: '#0b4da2' }}>Bed {wrongScanData.expectedBed}</strong> · MRN: <strong style={{ color: '#0b4da2' }}>{wrongScanData.expectedMrn}</strong>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: 11, color: '#0b4da2', fontWeight: 600 }}>
-                      🎯 Target for: {selectedSchedule?.prescription?.medicationName || activeRx?.medicationName || 'Medication'}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(220, 38, 38, 0.08)', padding: '10px 14px', borderRadius: 8 }}>
-                  <span style={{ fontSize: 12, color: '#991b1b', fontWeight: 600 }}>
-                    Please verify the physical patient bed and wristband QR before re-attempting scan.
-                  </span>
-                  <button
-                    onClick={handleResetScan}
-                    className="btn-primary"
-                    style={{ background: '#dc2626', borderColor: '#b91c1c', fontSize: 12, padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <RefreshCw size={13} /> Clear Alert &amp; Re-Scan Wristband
-                  </button>
+                  )}
                 </div>
                 <button
                   onClick={() => {
@@ -1141,81 +1105,98 @@ export default function BedsideScannerPage() {
             <div className="card" style={{ marginBottom: 20 }}>
               <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)' }}>
                 <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>5 Rights of Bedside Medication Safety Verification</h3>
-                <div style={{ fontSize: 12, color: administered ? 'var(--color-given-green)' : 'var(--color-text-muted)', marginTop: 4 }}>
-                  {administered ? '✓ All rights verified and documented' : 'HL7 / FHIR Live · HIPAA Sync Active'}
+                <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                  Hospital Policy requires all five safety criteria confirmed prior to barcode sign-off.
                 </div>
               </div>
               <div style={{ padding: 16 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }}>
                   {([
-                    { key: 'rightPatient', label: '1. RIGHT PATIENT', value: patient?.name || '—', icon: User },
+                    { key: 'rightPatient', label: '1. RIGHT PATIENT', value: patient?.name || targetPatient?.name || '—', icon: User },
                     { key: 'rightDrug', label: '2. RIGHT DRUG', value: selectedSchedule?.prescription?.medicationName?.split('(')[0]?.trim() || activeRx?.medicationName?.split('(')[0]?.trim() || 'Active eMAR Protocol', icon: Pill },
-                    { key: 'rightDose', label: '3. RIGHT DOSE', value: (selectedSchedule?.prescription?.dose ? `${selectedSchedule.prescription.dose}${selectedSchedule.prescription.unit || 'mg'}` : (activeRx ? `${activeRx.dose}${activeRx.unit || 'mg'}` : 'Standard Dose')), icon: Hash },
-                    { key: 'rightRoute', label: '4. RIGHT ROUTE', value: selectedSchedule?.prescription?.route?.split(' ')[0] || activeRx?.route?.split(' ')[0] || 'IV', icon: MapPin },
-                    { key: 'rightTime', label: '5. RIGHT TIME', value: selectedSchedule?.scheduledTime ? format(new Date(selectedSchedule.scheduledTime), 'HH:mm') + ' (Due Now)' : 'Due Now (Shift 07–15)', icon: Clock },
-                  ] as const).map(({ key, label, value, icon: Icon }) => {
-                    const verified = fiveRights[key as keyof typeof fiveRights];
-                    return (
-                      <div
-                        key={key}
-                        onClick={() => !administered && setFiveRights(prev => ({ ...prev, [key]: !prev[key as keyof typeof fiveRights] }))}
-                        style={{
-                          background: verified ? 'var(--color-given-green-bg)' : 'var(--color-bg-hover)',
-                          border: `1px solid ${verified ? 'var(--color-given-green-border)' : 'var(--color-border)'}`,
-                          borderRadius: 8, padding: '12px', textAlign: 'center', cursor: administered ? 'default' : 'pointer',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        <Icon size={18} color={verified ? 'var(--color-given-green)' : 'var(--color-text-muted)'} style={{ margin: '0 auto 6px', display: 'block' }} />
-                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: verified ? 'var(--color-given-green)' : 'var(--color-text-secondary)' }}>
-                          {verified ? '✓ ' : ''}{value}
-                        </div>
+                    { key: 'rightDose', label: '3. RIGHT DOSE', value: selectedSchedule ? `${selectedSchedule.prescription?.dose} ${selectedSchedule.prescription?.unit}` : (activeRx ? `${activeRx.dose} ${activeRx.unit}` : 'Standard Dose'), icon: AlertTriangle },
+                    { key: 'rightRoute', label: '4. RIGHT ROUTE', value: selectedSchedule?.prescription?.route || activeRx?.route || 'IV Infusion', icon: Activity },
+                    { key: 'rightTime', label: '5. RIGHT TIME', value: selectedSchedule?.scheduledTime ? format(new Date(selectedSchedule.scheduledTime), 'HH:mm') : 'Now (Shift Dose)', icon: Clock }
+                  ] as const).map(({ key, label, value, icon: Icon }) => (
+                    <button
+                      key={key}
+                      onClick={() => setFiveRights(prev => ({ ...prev, [key]: !prev[key] }))}
+                      style={{
+                        padding: '12px 10px',
+                        borderRadius: 8,
+                        border: `1.5px solid ${fiveRights[key] ? 'var(--color-given-green-border)' : 'var(--color-border)'}`,
+                        background: fiveRights[key] ? 'var(--color-given-green-bg)' : 'var(--color-bg-tertiary)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <Icon size={14} color={fiveRights[key] ? 'var(--color-given-green)' : 'var(--color-text-muted)'} />
+                        {fiveRights[key] ? <Check size={14} color="var(--color-given-green)" /> : <div style={{ width: 14, height: 14, borderRadius: 3, border: '1px solid var(--color-border)' }} />}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>
-                        {scanSuccessMessage || `Confirmed: ${targetPatient.name} (MRN: ${targetPatient.mrn}, Bed ${targetPatient.bed})`} · Bedside 4-Point Match Confirmed
+                      <div style={{ fontSize: 10, fontWeight: 700, color: fiveRights[key] ? 'var(--color-given-green)' : 'var(--color-text-muted)', letterSpacing: '0.04em' }}>
+                        {label}
                       </div>
-                    </div>
-                  </div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', marginTop: 2 }}>
+                        {value}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Administer Action Button */}
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center' }}>
                   <button
-                    onClick={handleResetScan}
+                    onClick={() => {
+                      setFiveRights({
+                        rightPatient: true,
+                        rightDrug: true,
+                        rightDose: true,
+                        rightRoute: true,
+                        rightTime: true
+                      });
+                    }}
                     className="btn-ghost"
-                    style={{ fontSize: 11, padding: '4px 10px' }}
+                    style={{ fontSize: 12 }}
                   >
-                    Rescan
+                    Auto-Confirm All 5
+                  </button>
+
+                  <button
+                    disabled={!allRightsVerified || administerMutation.isPending || administered}
+                    onClick={() => administerMutation.mutate()}
+                    className="btn-primary"
+                    style={{
+                      backgroundColor: allRightsVerified ? 'var(--color-given-green)' : undefined,
+                      borderColor: allRightsVerified ? 'var(--color-given-green-border)' : undefined,
+                      padding: '10px 24px',
+                      fontSize: 14
+                    }}
+                  >
+                    {administerMutation.isPending ? (
+                      <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Recording Administration...</>
+                    ) : (
+                      <><Scan size={16} /> Administer &amp; Sign eMAR</>
+                    )}
                   </button>
                 </div>
 
-                {/* Administer Button */}
-                {!administered ? (
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <button
-                      onClick={() => administerMutation.mutate()}
-                      disabled={!allRightsVerified || administerMutation.isPending}
-                      className={allRightsVerified ? 'btn-success' : 'btn-ghost'}
-                      style={{ fontSize: 14, padding: '12px 40px', opacity: allRightsVerified ? 1 : 0.5 }}
-                    >
-                      {administerMutation.isPending ? (
-                        <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Recording Administration...</>
-                      ) : (
-                        <><Scan size={16} /> Administer &amp; Sign eMAR</>
-                      )}
-                    </button>
+                {administered && (
+                  <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 8, backgroundColor: 'var(--color-given-green-bg)', border: '1px solid var(--color-given-green-border)', color: 'var(--color-given-green)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <CheckCircle2 size={15} /> Administration recorded in eMAR. HL7 audit stamp generated.
                   </div>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '16px', background: 'var(--color-given-green-bg)', border: '1px solid var(--color-given-green-border)', borderRadius: 8 }}>
-                    <CheckCircle2 size={32} color="var(--color-given-green)" style={{ margin: '0 auto 8px', display: 'block' }} />
-                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-given-green)' }}>Medication Successfully Administered</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                      eMAR updated · 5-Rights Verified · Cryptographic audit trail recorded
-                    </div>
-                  </div>
+                )}
+              </div>
+            </div>
 
             {/* 4. PENDING SCHEDULES */}
             {(schedules as any[]).filter(s => s.status === 'PENDING').length > 0 && (
               <div className="card">
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)' }}>
-                  <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>Remaining Pending Medications</h3>
+                  <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>
+                    Other Pending Doses for {patient?.name || targetPatient?.name}
+                  </h3>
                 </div>
                 {(schedules as any[]).filter(s => s.status === 'PENDING').map((s: any) => (
                   <div key={s.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -1224,134 +1205,18 @@ export default function BedsideScannerPage() {
                       <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
                         {s.prescription?.dose}{s.prescription?.unit} · {s.prescription?.route} · Due: {s.scheduledTime ? format(new Date(s.scheduledTime), 'HH:mm') : '—'}
                       </div>
-                    ) : (
-                      <div style={{ textAlign: 'center', padding: '20px', background: 'var(--color-given-green-bg)', border: '1.5px solid var(--color-given-green-border)', borderRadius: 10 }}>
-                        <CheckCircle2 size={36} color="var(--color-given-green)" style={{ margin: '0 auto 10px', display: 'block' }} />
-                        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--color-given-green)' }}>
-                          Medication Successfully Administered &amp; Recorded
-                        </div>
-                        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 4, marginBottom: 16 }}>
-                          eMAR updated · 5-Rights Verified · Cryptographic audit trail stamped · HL7 Broadcast Dispatched
-                        </div>
-                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                          <button
-                            onClick={() => navigate('/nurse')}
-                            className="btn-primary"
-                            style={{ fontSize: 13, padding: '8px 20px' }}
-                          >
-                            <ArrowLeft size={14} /> Back to Nurse Dashboard
-                          </button>
-                          <button
-                            onClick={() => navigate(`/patients/${targetPatient.id}`)}
-                            className="btn-ghost"
-                            style={{ fontSize: 13, padding: '8px 18px' }}
-                          >
-                            <User size={14} /> View Patient eMAR Chart
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Remaining Pending Medications for Target Patient */}
-                {(schedules as any[]).filter(s => s.status === 'PENDING' && s.id !== selectedSchedule?.id).length > 0 && (
-                  <div className="card">
-                    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)' }}>
-                      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>
-                        Other Pending Medications for {targetPatient.name}
-                      </h3>
                     </div>
-                    <button onClick={() => setScheduleId(s.id)} className="btn-primary" style={{ fontSize: 11 }}>
+                    <button onClick={() => setSelectedScheduleId(s.id)} className="btn-primary" style={{ fontSize: 11 }}>
                       Select &amp; Administer
                     </button>
                   </div>
-                )}
+                ))}
               </div>
             )}
-          </div>
-        ) : (
-          /* ═══════════════ GENERAL STANDALONE SCANNER MODE (NO PRE-SELECTED PATIENT) ═══════════════ */
-          <div>
-            <div className="card" style={{ padding: 28, textAlign: 'center' }}>
-              <div style={{ marginBottom: 20 }}>
-                <CameraQRScanner
-                  onScanSuccess={(scannedCode) => {
-                    processBarcodeScan(scannedCode);
-                  }}
-                  autoStart={true}
-                />
-              </div>
-
-              <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                {isScanning ? 'Scanning Wristband...' : 'Ready to Scan Patient Wristband'}
-              </h2>
-              <p style={{ margin: '0 0 20px', color: 'var(--color-text-muted)', fontSize: 13 }}>
-                Point your camera at any active patient wristband QR code to begin bedside dispensing.
-              </p>
-
-              {/* Barcode Form */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (barcodeInput.trim()) {
-                    processBarcodeScan(barcodeInput);
-                  }
-                }}
-                style={{ maxWidth: 440, margin: '0 auto 24px', display: 'flex', gap: 8 }}
-              >
-                <input
-                  ref={barcodeInputRef}
-                  type="text"
-                  value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
-                  placeholder="Type or scan patient MRN (e.g. MRN-2024-004)"
-                  style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    border: '1px solid var(--color-border)',
-                    fontSize: 13,
-                    background: 'var(--color-bg-primary)',
-                    color: 'var(--color-text-primary)',
-                    outline: 'none'
-                  }}
-                />
-                <button type="submit" className="btn-primary" style={{ fontSize: 12, padding: '0 18px' }}>
-                  Scan &amp; Open
-                </button>
-              </form>
-
-              {/* Simulation */}
-              <button onClick={handleSimulateCorrectScan} disabled={isScanning} className="btn-primary" style={{ fontSize: 14, padding: '12px 32px' }}>
-                <Scan size={16} /> {isScanning ? 'Scanning...' : 'Simulate Wristband Scan'}
-              </button>
-
-              {/* Fallback manual selector only shown when NO target patient is pre-selected */}
-              <div style={{ marginTop: 28, borderTop: '1px solid var(--color-border)', paddingTop: 20 }}>
-                <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>Or choose a patient to begin administration:</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-                  {(patients as any[]).map((p: any) => (
-                    <button
-                      key={p.id}
-                      onClick={() => {
-                        setSelectedPatientId(p.id);
-                        setIsVerified(false);
-                        setWrongScanData(null);
-                      }}
-                      className="btn-ghost"
-                      style={{ flexDirection: 'column', padding: '10px', height: 'auto', textAlign: 'center' }}
-                    >
-                      <span style={{ fontWeight: 600, fontSize: 12 }}>{p.name}</span>
-                      <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Bed {p.bed} · {p.mrn}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </div>
     </div>
   );
 }
+

@@ -13,11 +13,15 @@ import ReportsPage from './pages/ReportsPage';
 import AdminPage from './pages/AdminPage';
 import PatientPortalPage from './pages/PatientPortalPage';
 import PublicVerificationPage from './pages/PublicVerificationPage';
+import ReceptionistPortalPage from './pages/ReceptionistPortalPage';
+import HospitalStaffPortalPage from './pages/HospitalStaffPortalPage';
 import { useAuth } from './hooks/useAuth';
 
 function RoleRedirect() {
   const { user } = useAuth();
   if (user?.role === 'PATIENT') return <Navigate to="/patient-portal" replace />;
+  if (user?.role === 'RECEPTIONIST') return <Navigate to="/receptionist" replace />;
+  if (user?.role === 'ALLIED_STAFF') return <Navigate to="/staff" replace />;
   if (user?.role === 'NURSE') return <Navigate to="/nurse" replace />;
   if (user?.role === 'DOCTOR') return <Navigate to="/doctor" replace />;
   if (user?.role === 'PHARMACIST') return <Navigate to="/prescriptions" replace />;
@@ -30,8 +34,10 @@ function App() {
     <Routes>
       <Route path="/verify" element={<PublicVerificationPage />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/admin" element={<ProtectedRoute allowedRoles={['ADMIN', 'DOCTOR']}><AdminPage /></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute allowedRoles={['ADMIN', 'DOCTOR', 'ALLIED_STAFF']}><AdminPage /></ProtectedRoute>} />
       <Route path="/patient-portal" element={<ProtectedRoute allowedRoles={['PATIENT', 'ADMIN', 'DOCTOR', 'NURSE']}><PatientPortalPage /></ProtectedRoute>} />
+      <Route path="/receptionist" element={<ProtectedRoute allowedRoles={['RECEPTIONIST', 'ADMIN', 'DOCTOR', 'NURSE']}><ReceptionistPortalPage /></ProtectedRoute>} />
+      <Route path="/staff" element={<ProtectedRoute allowedRoles={['ALLIED_STAFF', 'NURSE', 'ADMIN', 'DOCTOR']}><HospitalStaffPortalPage /></ProtectedRoute>} />
 
       <Route
         element={
@@ -41,7 +47,7 @@ function App() {
         }
       >
         <Route index element={<RoleRedirect />} />
-        <Route path="/nurse" element={<ProtectedRoute allowedRoles={['NURSE', 'ADMIN']}><NurseDashboardPage /></ProtectedRoute>} />
+        <Route path="/nurse" element={<ProtectedRoute allowedRoles={['NURSE', 'ADMIN', 'ALLIED_STAFF']}><NurseDashboardPage /></ProtectedRoute>} />
         <Route path="/doctor" element={<ProtectedRoute allowedRoles={['DOCTOR', 'ADMIN']}><DoctorDashboardPage /></ProtectedRoute>} />
         <Route path="/patients" element={<PatientsListPage />} />
         <Route path="/patients/:id" element={<PatientEMARPage />} />

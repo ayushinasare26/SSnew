@@ -39,13 +39,60 @@ const PATIENT_PRESETS = [
   { name: 'Meera Iyer', mrn: '94024-03', bed: 'Bed ICU-03', diagnosis: 'COPD Exacerbation', pin: '1234', initials: 'MI', color: '#7c3aed' },
 ];
 
+const STAFF_PRESETS = [
+  {
+    name: 'Arjun Mehta, MLS',
+    badgeId: 'LT-44201',
+    roleLabel: 'LAB & BLOOD BANK',
+    initials: 'AM',
+    avatarBg: '#8b5cf6',
+    borderActive: '#8b5cf6',
+    bgActive: '#f5f3ff',
+    department: 'Central Pathology & Blood Bank',
+    pin: '1234',
+  },
+  {
+    name: 'Pooja Sharma, RT(R)',
+    badgeId: 'RT-55102',
+    roleLabel: 'IMAGING & RADIOLOGY',
+    initials: 'PS',
+    avatarBg: '#06b6d4',
+    borderActive: '#06b6d4',
+    bgActive: '#ecfeff',
+    department: 'Diagnostic Radiology & CT Imaging',
+    pin: '1234',
+  },
+  {
+    name: 'Nurse Suresh Verma, RN',
+    badgeId: 'CN-40192',
+    roleLabel: 'CARE COORDINATOR',
+    initials: 'SV',
+    avatarBg: '#10b981',
+    borderActive: '#10b981',
+    bgActive: '#ecfdf5',
+    department: 'Ward Resource Management & Care Coordination',
+    pin: '1234',
+  },
+  {
+    name: 'Nurse Kavita Nair, RN',
+    badgeId: 'RN-55219',
+    roleLabel: 'CHARGE & SAFETY',
+    initials: 'KN',
+    avatarBg: '#f97316',
+    borderActive: '#f97316',
+    bgActive: '#fff7ed',
+    department: 'Acute Inpatient Care & Medication Safety',
+    pin: '1234',
+  },
+];
+
 export default function LoginPage() {
-  const { login, isLoading } = useAuth();
+  const { login, loginAsReceptionist, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Tab: 'admin' | 'clinical' | 'patient'
-  const [activeTab, setActiveTab] = useState<'admin' | 'clinical' | 'patient'>('admin');
+  // Tab: 'admin' | 'clinical' | 'patient' | 'receptionist' | 'staff'
+  const [activeTab, setActiveTab] = useState<'admin' | 'clinical' | 'patient' | 'receptionist' | 'staff'>('admin');
 
   // Admin form state
   const [selectedAdminIndex, setSelectedAdminIndex] = useState(0);
@@ -65,6 +112,12 @@ export default function LoginPage() {
   const [patientPin, setPatientPin] = useState('1234');
   const [showPatientPin, setShowPatientPin] = useState(false);
 
+  // Hospital Staff form state
+  const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
+  const [staffBadgeId, setStaffBadgeId] = useState('LT-44201');
+  const [staffPin, setStaffPin] = useState('1234');
+  const [showStaffPin, setShowStaffPin] = useState(false);
+
   const [error, setError] = useState('');
 
   const handleAdminSelect = (idx: number) => {
@@ -82,6 +135,24 @@ export default function LoginPage() {
     setSelectedPatientIndex(idx);
     setPatientMrn(PATIENT_PRESETS[idx].mrn);
     setPatientPin(PATIENT_PRESETS[idx].pin);
+  };
+
+  const handleStaffSelect = (idx: number) => {
+    setSelectedStaffIndex(idx);
+    setStaffBadgeId(STAFF_PRESETS[idx].badgeId);
+    setStaffPin(STAFF_PRESETS[idx].pin);
+  };
+
+  const handleStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await login({ staffId: staffBadgeId.trim(), pin: staffPin.trim() });
+      navigate('/staff');
+    } catch (err: any) {
+      const respMsg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || 'Hospital Staff authentication failed.';
+      setError(String(respMsg));
+    }
   };
 
   const handleAdminSubmit = async (e: React.FormEvent) => {
@@ -141,6 +212,16 @@ export default function LoginPage() {
     }
   };
 
+  const handleReceptionistLogin = async () => {
+    setError('');
+    try {
+      await loginAsReceptionist();
+    } catch (err) {
+      console.error('Receptionist login error:', err);
+    }
+    navigate('/receptionist');
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -188,6 +269,28 @@ export default function LoginPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            onClick={handleReceptionistLogin}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: 'rgba(6, 182, 212, 0.15)',
+              border: '1px solid rgba(6, 182, 212, 0.4)',
+              borderRadius: 9999,
+              padding: '5px 14px',
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#22d3ee',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Building2 size={13} />
+            <span>Receptionist Desk</span>
+          </button>
+
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -218,22 +321,22 @@ export default function LoginPage() {
       }}>
         <div style={{
           width: '100%',
-          maxWidth: 480,
+          maxWidth: 520,
           backgroundColor: '#ffffff',
           borderRadius: 22,
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08)',
-          padding: '28px 28px 24px',
+          padding: '28px 24px 24px',
           color: '#0f172a'
         }}>
-          {/* Top 3-Way Segmented Navigation Tabs */}
+          {/* Top 5-Way Segmented Navigation Tabs */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
+            gridTemplateColumns: 'repeat(5, 1fr)',
             backgroundColor: '#f1f5f9',
             padding: 4,
             borderRadius: 14,
             marginBottom: 24,
-            gap: 4
+            gap: 3
           }}>
             <button
               type="button"
@@ -242,12 +345,12 @@ export default function LoginPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 5,
-                padding: '8px 10px',
+                gap: 3,
+                padding: '8px 4px',
                 borderRadius: 10,
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: 12,
+                fontSize: 10.5,
                 fontWeight: 700,
                 backgroundColor: activeTab === 'admin' ? '#0b4da2' : 'transparent',
                 color: activeTab === 'admin' ? '#ffffff' : '#64748b',
@@ -255,7 +358,7 @@ export default function LoginPage() {
                 transition: 'all 0.18s ease'
               }}
             >
-              <Shield size={14} />
+              <Shield size={12} />
               <span>1. Admin</span>
             </button>
 
@@ -266,12 +369,12 @@ export default function LoginPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 5,
-                padding: '8px 10px',
+                gap: 3,
+                padding: '8px 4px',
                 borderRadius: 10,
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: 12,
+                fontSize: 10.5,
                 fontWeight: 700,
                 backgroundColor: activeTab === 'clinical' ? '#0b4da2' : 'transparent',
                 color: activeTab === 'clinical' ? '#ffffff' : '#64748b',
@@ -279,7 +382,7 @@ export default function LoginPage() {
                 transition: 'all 0.18s ease'
               }}
             >
-              <Stethoscope size={14} />
+              <Stethoscope size={12} />
               <span>2. Clinical</span>
             </button>
 
@@ -290,12 +393,12 @@ export default function LoginPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 5,
-                padding: '8px 10px',
+                gap: 3,
+                padding: '8px 4px',
                 borderRadius: 10,
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: 12,
+                fontSize: 10.5,
                 fontWeight: 700,
                 backgroundColor: activeTab === 'patient' ? '#0b4da2' : 'transparent',
                 color: activeTab === 'patient' ? '#ffffff' : '#64748b',
@@ -303,8 +406,57 @@ export default function LoginPage() {
                 transition: 'all 0.18s ease'
               }}
             >
-              <Heart size={14} />
+              <Heart size={12} />
               <span>3. Patients</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setActiveTab('receptionist'); setError(''); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 3,
+                padding: '8px 4px',
+                borderRadius: 10,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 10.5,
+                fontWeight: 700,
+                backgroundColor: activeTab === 'receptionist' ? '#0b4da2' : 'transparent',
+                color: activeTab === 'receptionist' ? '#ffffff' : '#64748b',
+                boxShadow: activeTab === 'receptionist' ? '0 2px 8px rgba(11, 77, 162, 0.35)' : 'none',
+                transition: 'all 0.18s ease'
+              }}
+            >
+              <Building2 size={12} />
+              <span>4. Reception</span>
+            </button>
+
+            <button
+              id="tab-hospital-staff-btn"
+              type="button"
+              onClick={() => { setActiveTab('staff'); setError(''); }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 3,
+                padding: '8px 4px',
+                borderRadius: 10,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 10.5,
+                fontWeight: 700,
+                backgroundColor: activeTab === 'staff' ? '#0b4da2' : 'transparent',
+                color: activeTab === 'staff' ? '#ffffff' : '#64748b',
+                boxShadow: activeTab === 'staff' ? '0 2px 8px rgba(11, 77, 162, 0.35)' : 'none',
+                transition: 'all 0.18s ease'
+              }}
+            >
+              <Briefcase size={12} />
+              <span>5. Hospital Staff</span>
             </button>
           </div>
 
@@ -978,6 +1130,340 @@ export default function LoginPage() {
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <Shield size={12} color="#16a34a" /> Protected by Hospital Patient Privacy &amp; HIPAA eMAR Gateway
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* TAB 4: RECEPTIONIST & ADMISSIONS DESK                    */}
+          {/* ======================================================== */}
+          {activeTab === 'receptionist' && (
+            <div>
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <div style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 14,
+                  background: 'linear-gradient(135deg, #0891b2 0%, #06b6d4 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 12px',
+                  boxShadow: '0 8px 16px -4px rgba(6, 182, 212, 0.4)'
+                }}>
+                  <Building2 size={26} color="#ffffff" />
+                </div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+                  Receptionist &amp; Admissions Desk
+                </h2>
+                <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>
+                  OPD Registration, Inpatient Admissions, QR Wristbands &amp; Ward Bed Mapping
+                </p>
+              </div>
+
+              {/* Station Card */}
+              <div
+                id="receptionist-station-card"
+                onClick={handleReceptionistLogin}
+                style={{
+                  backgroundColor: '#f0fdfa',
+                  border: '1.5px solid #99f6e4',
+                  borderRadius: 12,
+                  padding: '14px 16px',
+                  marginBottom: 18,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: '0 2px 6px rgba(13, 148, 136, 0.08)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#0d9488';
+                  e.currentTarget.style.backgroundColor = '#ecfdf5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#99f6e4';
+                  e.currentTarget.style.backgroundColor = '#f0fdfa';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#0d9488', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12 }}>
+                      PS
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#134e4a' }}>Priya Sen, Receptionist</div>
+                      <div style={{ fontSize: 11, color: '#0f766e' }}>Station: Front Desk Admissions 01</div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, backgroundColor: '#ccfbf1', color: '#0f766e', padding: '2px 8px', borderRadius: 9999 }}>
+                    ON DUTY
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: '#115e59', lineHeight: 1.4, marginTop: 6 }}>
+                  Direct access to Patient Triage, OPD Queue, Doctor Allotment, Bed Map &amp; Printable Health Passes.
+                </div>
+              </div>
+
+              <button
+                id="launch-receptionist-portal-btn"
+                type="button"
+                onClick={handleReceptionistLogin}
+                disabled={isLoading}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  borderRadius: 10,
+                  backgroundColor: '#0891b2',
+                  backgroundImage: 'linear-gradient(180deg, #0891b2 0%, #0e7490 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 14px rgba(8, 145, 178, 0.4)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Building2 size={18} />
+                <span>Launch Receptionist Portal</span>
+              </button>
+
+              <div style={{ marginTop: 14, textAlign: 'center', fontSize: 11, color: '#64748b' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Shield size={12} color="#0d9488" /> Hospital Central Admissions &amp; EHR Live Sync Active
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* TAB 5: HOSPITAL STAFF PORTAL                             */}
+          {/* ======================================================== */}
+          {activeTab === 'staff' && (
+            <div>
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <div style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 14,
+                  background: 'linear-gradient(145deg, #0b4da2, #0284c7)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 12px',
+                  boxShadow: '0 8px 18px rgba(11, 77, 162, 0.28)'
+                }}>
+                  <Building2 size={26} color="#ffffff" />
+                </div>
+                <div>
+                  <span style={{
+                    display: 'inline-block',
+                    backgroundColor: '#e0f2fe',
+                    color: '#0369a1',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: '0.08em',
+                    padding: '3px 10px',
+                    borderRadius: 9999,
+                    marginBottom: 6
+                  }}>
+                    ALLIED &amp; HOSPITAL SERVICES
+                  </span>
+                </div>
+                <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: '4px 0 6px', letterSpacing: '-0.02em' }}>
+                  Hospital Staff Portal
+                </h2>
+                <p style={{ fontSize: 12, color: '#64748b', margin: 0, lineHeight: 1.45 }}>
+                  Pathology Lab &bull; Diagnostic Radiology &bull; Care Coordination &bull; Operations
+                </p>
+              </div>
+
+              {/* Preset Selector */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    SELECT HOSPITAL STAFF (DEMO):
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#0284c7' }}>
+                    4 Preset Roles
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {STAFF_PRESETS.map((preset, idx) => {
+                    const isSelected = selectedStaffIndex === idx && staffBadgeId === preset.badgeId;
+                    return (
+                      <div
+                        key={preset.badgeId}
+                        onClick={() => handleStaffSelect(idx)}
+                        style={{
+                          border: `1.5px solid ${isSelected ? preset.borderActive : '#e2e8f0'}`,
+                          backgroundColor: isSelected ? preset.bgActive : '#ffffff',
+                          borderRadius: 10,
+                          padding: '8px 10px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          boxShadow: isSelected ? `0 2px 8px ${preset.borderActive}25` : 'none'
+                        }}
+                      >
+                        <div style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: '50%',
+                          backgroundColor: preset.avatarBg,
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          flexShrink: 0
+                        }}>
+                          {preset.initials}
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {preset.name}
+                          </div>
+                          <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace', fontWeight: 600, textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {preset.badgeId} &bull; {preset.roleLabel}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Staff ID & PIN Form */}
+              <form onSubmit={handleStaffSubmit}>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                    Hospital Staff ID / Badge Number
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }}>
+                      <Building2 size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      value={staffBadgeId}
+                      onChange={(e) => setStaffBadgeId(e.target.value)}
+                      placeholder="e.g. LT-44201"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px 10px 38px',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontFamily: 'monospace',
+                        fontWeight: 700,
+                        color: '#0f172a',
+                        backgroundColor: '#f8fafc',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                    Staff Passcode / Security PIN
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }}>
+                      <Lock size={16} />
+                    </div>
+                    <input
+                      type={showStaffPin ? 'text' : 'password'}
+                      value={staffPin}
+                      onChange={(e) => setStaffPin(e.target.value)}
+                      placeholder="••••"
+                      style={{
+                        width: '100%',
+                        padding: '10px 38px 10px 38px',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: 700,
+                        letterSpacing: '0.2em',
+                        color: '#0f172a',
+                        backgroundColor: '#ffffff',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowStaffPin(!showStaffPin)}
+                      style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                    >
+                      {showStaffPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <div style={{
+                    backgroundColor: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 8,
+                    padding: '10px 14px',
+                    color: '#b91c1c',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginBottom: 16
+                  }}>
+                    <AlertTriangle size={15} color="#b91c1c" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <button
+                  id="authenticate-staff-portal-btn"
+                  type="submit"
+                  disabled={isLoading}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: 10,
+                    backgroundColor: '#0b4da2',
+                    backgroundImage: 'linear-gradient(180deg, #0d5ec4 0%, #0a499f 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    boxShadow: '0 4px 14px rgba(11, 77, 162, 0.35)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {isLoading ? (
+                    <><Loader2 size={16} className="animate-spin" /><span>Authenticating Staff...</span></>
+                  ) : (
+                    <><Building2 size={16} /><span>Authenticate &amp; Enter Staff Portal</span><ArrowRight size={15} /></>
+                  )}
+                </button>
+              </form>
+
+              <div style={{ marginTop: 16, textAlign: 'center', fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Shield size={12} color="#0284c7" />
+                <span>Pathology &bull; Radiology &bull; Care Coordination &bull; Operations</span>
               </div>
             </div>
           )}
