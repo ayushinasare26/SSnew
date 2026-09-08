@@ -5,11 +5,12 @@ import { createAuditLog } from '../utils/audit';
 
 export const getPatients = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { ward, status, search } = req.query;
+    const { ward, status, search, attendingId } = req.query;
     const patients = await prisma.patient.findMany({
       where: {
         ...(ward && { ward: { unit: ward as string } }),
         ...(status && { status: status as any }),
+        ...(attendingId && { attendingId: attendingId as string }),
         ...(search && {
           OR: [
             { name: { contains: search as string, mode: 'insensitive' } },
@@ -36,10 +37,29 @@ export const getPatients = async (req: AuthRequest, res: Response, next: NextFun
             },
           },
         },
+        clinicalNotes: {
+          take: 3,
+          orderBy: { createdAt: 'desc' },
+          include: { author: { select: { name: true, role: true } } },
+        },
       },
       orderBy: { name: 'asc' },
     });
-    res.json(patients);
+
+    // Populate attending doctor details
+    const doctorIds = Array.from(new Set(patients.map(p => p.attendingId).filter(Boolean))) as string[];
+    const doctors = doctorIds.length > 0 ? await prisma.user.findMany({
+      where: { id: { in: doctorIds } },
+      select: { id: true, name: true, role: true, specialty: true, title: true },
+    }) : [];
+    const docMap = new Map(doctors.map(d => [d.id, d]));
+
+    const enrichedPatients = patients.map(p => ({
+      ...p,
+      attending: p.attendingId ? docMap.get(p.attendingId) || null : null,
+    }));
+
+    res.json(enrichedPatients);
   } catch (error) { next(error); }
 };
 
@@ -111,6 +131,13 @@ export const getPatient = async (req: AuthRequest, res: Response, next: NextFunc
           orderBy: { signedAt: 'desc' },
           take: 20,
         },
+        clinicalNotes: {
+          include: {
+            author: { select: { id: true, name: true, role: true, staffId: true, title: true } },
+            acknowledgedBy: { select: { id: true, name: true, role: true, staffId: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
         safetyAlerts: {
           where: { isResolved: false },
           orderBy: { createdAt: 'desc' },
@@ -118,7 +145,16 @@ export const getPatient = async (req: AuthRequest, res: Response, next: NextFunc
       },
     });
     if (!patient) { res.status(404).json({ error: 'Patient not found' }); return; }
-    res.json(patient);
+
+    let attending = null;
+    if (patient.attendingId) {
+      attending = await prisma.user.findUnique({
+        where: { id: patient.attendingId },
+        select: { id: true, name: true, role: true, specialty: true, title: true, staffId: true },
+      });
+    }
+
+    res.json({ ...patient, attending });
   } catch (error) { next(error); }
 };
 
