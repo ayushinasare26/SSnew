@@ -313,6 +313,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       const fallback = getFallbackPresetUser({ staffId: targetStaffId, mrn: targetMrn, adminId: targetStaffId });
       localStorage.setItem('accessToken', `mock-token-${fallback.id}`);
+      localStorage.setItem('refreshToken', 'mock-admin-refresh-token');
       localStorage.setItem('user', JSON.stringify(fallback));
       setUser(fallback);
       return fallback;
@@ -340,7 +341,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(data.user);
       return data.user;
     } catch {
-      localStorage.setItem('accessToken', 'mock-receptionist-token-2026');
+      localStorage.setItem('accessToken', `mock-token-${receptionistUser.id}`);
+      localStorage.setItem('refreshToken', 'mock-admin-refresh-token');
       localStorage.setItem('user', JSON.stringify(receptionistUser));
       setUser(receptionistUser);
       return receptionistUser;

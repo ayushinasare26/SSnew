@@ -34,7 +34,12 @@ const processQueue = (error: any, token: string | null = null) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error?.config;
+
+    // Never retry auth login or refresh requests to avoid loops
+    if (!originalRequest || originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/refresh')) {
+      return Promise.reject(error);
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
@@ -50,9 +55,15 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       const refreshToken = localStorage.getItem('refreshToken');
+      const currentUser = localStorage.getItem('user');
+
       if (!refreshToken) {
-        localStorage.clear();
-        window.location.href = '/login';
+        // Only redirect to login if user truly does not have an active session
+        if (!currentUser && window.location.pathname !== '/login') {
+          localStorage.clear();
+          window.location.href = '/login';
+        }
+        isRefreshing = false;
         return Promise.reject(error);
       }
 
@@ -65,8 +76,12 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        localStorage.clear();
-        window.location.href = '/login';
+        // Only clear session and redirect if user does not have a valid logged-in profile
+        // This prevents kicking logged-in users out when the backend encounters a temporary error
+        if (!currentUser && window.location.pathname !== '/login') {
+          localStorage.clear();
+          window.location.href = '/login';
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
