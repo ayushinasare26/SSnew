@@ -1,19 +1,7 @@
 {
   "buildCommand": "cd SmartMedChart-main && npm install && npm run build",
   "outputDirectory": "SmartMedChart-main/dist",
-  "functions": {
-    "SmartMedChart-main/api/**/*.ts": {
-      "includeFiles": "SmartMedChart-main/prisma/**"
-    },
-    "api/**/*.ts": {
-      "includeFiles": "prisma/**"
-    }
-  },
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index.ts"
-    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
